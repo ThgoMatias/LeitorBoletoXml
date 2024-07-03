@@ -1,0 +1,132 @@
+import xmltodict
+import os
+import json
+import pandas as pd
+from lxml import etree
+import xml.etree.ElementTree as ET
+import win32com.client as win32
+
+def flatten_dict(d, parent_key='', sep='_'):
+    items = []
+    for k, v in d.items():
+        new_key = f"{parent_key}{sep}{k}" if parent_key else k
+        if isinstance(v, dict):
+            items.extend(flatten_dict(v, new_key, sep=sep).items())
+        else:
+            items.append((new_key, v))
+    return dict(items)
+
+def pegar_infos(nome_arquivo,valores):
+    print(f"Pegou as informações {nome_arquivo}")
+    with open(f"Arquivo/{nome_arquivo}", "rb") as arquivo_xml:
+        dic_arquivo = xmltodict.parse(arquivo_xml)
+
+      
+        #print(json.dumps(dic_arquivo, indent=4)) 3.196.037,32
+
+        #informações da NF
+        try:
+
+            produtos = dic_arquivo['nfeProc']['NFe']['infNFe']['cobr']
+            dets = dic_arquivo['nfeProc']['NFe']['infNFe']['cobr'].get('dup',[])
+            if not isinstance(dets,list):
+                dets = [dets]
+               
+            det_data = []
+
+            for det in dets:
+
+                numeroFatura = produtos['fat']['nFat']
+                valorOrigem = produtos['fat']['vOrig']
+                desconto = produtos['fat']['vDesc']
+                valorLiquido = produtos['fat']['vLiq']
+                nDuplicata = det['nDup']
+                Vencimento = det['dVenc']
+                valorDuplicata =det['vDup']
+
+                valorOrigem = str(valorOrigem)
+                valorOrigem = valorOrigem.replace('.',',')
+                desconto = str(desconto)
+                desconto = desconto.replace('.',',')
+                valorLiquido = str(valorLiquido)
+                valorLiquido = valorLiquido.replace('.',',')
+                valorDuplicata = str(valorDuplicata)
+                valorDuplicata = valorDuplicata.replace('.',',')
+
+                if "NFe" in dic_arquivo:
+                    infos_Nf = dic_arquivo["NFe"]["infNFe"]
+                else:
+                    infos_Nf = dic_arquivo["nfeProc"]["NFe"]["infNFe"]
+                chave = dic_arquivo["nfeProc"]["protNFe"]["infProt"]["chNFe"]
+                numero_NF = infos_Nf ["ide"]["nNF"]
+                serie_NF = infos_Nf ["ide"]["serie"]
+                emissao = infos_Nf ["ide"]["dhEmi"]
+                emissao = emissao[0:10]
+                naturezaOperacao = infos_Nf ["ide"]["natOp"]
+                TipoNf = infos_Nf ["ide"]["tpNF"]
+                if  TipoNf =="0":
+                    TipoNf = "Entrada"
+                else:
+                    TipoNf = "Saida"
+                try:
+                    cnpj_emit = infos_Nf["emit"]["CNPJ"] or ["CPF"]
+                except:
+                    cnpj_emit = infos_Nf["emit"]["CPF"]
+                nome_emit = infos_Nf["emit"]["xNome"]
+                uf_emit = infos_Nf["emit"]["enderEmit"]["UF"]
+                try:
+                    cnpj_dest = infos_Nf["dest"]["CNPJ"] or ["CPF"]
+                except:
+                    cnpj_dest = infos_Nf["dest"]["CPF"]
+                nome_dest = infos_Nf["dest"]["xNome"]
+                uf_dest = infos_Nf["emit"]["enderEmit"]["UF"]
+
+                # Valores Totais NF
+
+                ValorTotalProduto = infos_Nf['total']['ICMSTot']['vNF']
+                ValorTotalNF = infos_Nf['total']['ICMSTot']['vProd']
+                baseICMS = infos_Nf['total']['ICMSTot']['vBC']
+                valorICMS = infos_Nf['total']['ICMSTot']['vICMS']
+                ICMSDeson = infos_Nf['total']['ICMSTot']['vICMSDeson']
+                Difal = infos_Nf['total']['ICMSTot']['vICMSUFDest']
+                FCP = infos_Nf['total']['ICMSTot']['vFCP']
+                BaseST = infos_Nf['total']['ICMSTot']['vBCST']
+                valorST = infos_Nf['total']['ICMSTot']['vST']
+                valorDesc = infos_Nf['total']['ICMSTot']['vDesc']
+                valorPis = infos_Nf['total']['ICMSTot']['vPIS']
+                valorCofins = infos_Nf['total']['ICMSTot']['vCOFINS']
+                ValorTotalProduto = str(ValorTotalProduto)
+                ValorTotalProduto = ValorTotalProduto.replace('.',',')
+                ValorTotalNF = str(ValorTotalNF)
+                ValorTotalNF = ValorTotalNF.replace('.',',')
+
+                valores.append([numero_NF,serie_NF,emissao,chave,naturezaOperacao,TipoNf,cnpj_emit,nome_emit,
+                                uf_emit,cnpj_dest,nome_dest,uf_dest,ValorTotalProduto,ValorTotalNF,
+                                numeroFatura,valorOrigem,desconto,valorLiquido,nDuplicata,Vencimento,
+                                valorDuplicata])
+                
+                      
+            
+                  
+            
+        except Exception as e:
+            #print(e)
+            # print(json.dumps(dic_arquivo, indent=4))
+            pass
+
+
+
+lista_arquivos = os.listdir("Arquivo")
+
+colunas = ["Numero NF", "Serie NF","Emissão NF","Chave","Natureza da operação","Tipo NF","CNPJ Emitente",
+           "Razão Social Emitente","UF Emitente","CNPJ Destino","Razão Social Destino","UF Destino",
+           "Valor Total Produto","Valor Total NF","Numero da Fatura",
+           "Valor Origem","Desconto","Valor Liquido","Parcela","Vencimento","Valor Boleto"]
+
+valores = []
+for arquivo in lista_arquivos:
+    pegar_infos(arquivo,valores)
+
+
+Tabela = pd.DataFrame(columns=colunas,data=valores)
+Tabela.to_excel("NotasXMLBoletos.xlsx",index=False)
